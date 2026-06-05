@@ -1,69 +1,66 @@
-# DVSA Auto-Booking Bot 🚗💨
+# DVSA Auto-Booking & Session Keep-Alive Bot 🚗💨
 
-A lightweight, background-friendly macOS automation script designed to monitor the UK Driver and Vehicle Standards Agency (DVSA) booking system, check for cancellation slots, and auto-book them based on your strict preferences.
+A lightweight, background-friendly macOS automation script designed to work alongside manual booking or notification apps (like Testi). The bot supports two modes: keeping your Safari session active to prevent logouts/bans, or actively searching and auto-booking cancellation slots on the UK Driver and Vehicle Standards Agency (DVSA) portal.
 
 ---
 
 ## 🌟 Key Features
 
-* **Strict Whitelisting:** Define exact dates and time ranges (e.g., only mornings or afternoons) you are willing to accept.
-* **Twilio WhatsApp Alerts:** Instantly receive WhatsApp notifications on your phone when a match is found and/or booked.
-* **Anti-Detection Measures:** Uses humanized, randomized delays (between 30s and 90s) and checks for Web Application Firewalls (WAF)/Queue pages.
-* **Audio Alarms:** Emits system alarms on success (`Glass`) and blocking errors (`Basso`) using native macOS audio.
-* **Safety Switches:** Configurable dry-run mode to ensure you can inspect details before confirming.
+* **Dual Operation Modes:**
+  * **`keep_alive` (Pivot Mode):** Relaxed refreshing to keep your active booking session logged in without getting banned. Alerts you immediately if the session expires, gets blocked, or requires a CAPTCHA.
+  * **`auto_book`:** Aggressively monitors the calendar for whitelisted slots and books them automatically.
+* **Intelligent Alarm Loop:** Continues sounding system alarms and sends a WhatsApp notification when a block or login redirect is detected. The alarm automatically stops once the user logs back in or solves the CAPTCHA.
+* **Twilio WhatsApp Alerts:** Instantly sends real-time status alerts to your phone.
+* **Anti-Detection Measures:** Implements random human-like delay times (e.g. 3–5 minutes in keep-alive mode) and handles queue pages (Queue-It) gracefully.
+* **Audio Alarms:** Emits system alarms on success (`Glass`) and blocking/action-required pages (`Basso`) using native macOS audio commands.
 
 ---
 
 ## 💻 System Requirements & Browser Compatibility
 
 ### OS Requirements
-* **macOS Only:** The bot relies heavily on macOS system integrations such as AppleScript (`osascript`) to communicate with the browser, and `afplay` for playing audio alerts.
+* **macOS Only:** The bot utilizes native macOS features like AppleScript (`osascript`) to communicate with the browser and `afplay` to play sound alerts.
 
 ### Browser Compatibility
-* **Safari (Primary):** The bot is built specifically to control **Safari**. It sends AppleScript commands to read the HTML context and inject JavaScript directly into the frontmost Safari tab. This allows the bot to run with extremely low overhead and minimal risk of triggering browser-based bot protection.
-* *Note on Chrome:* Although a `test_chrome.py` diagnostic file is present for testing `undetected-chromedriver` frameworks, the active auto-booker script (`dvsa_bot.py`) **only supports Safari**.
+* **Safari (Primary):** The bot is built specifically to control **Safari**. It sends AppleScript commands to read the document status and refresh pages on the frontmost Safari tab.
+* *Note on Chrome:* Although a `test_chrome.py` diagnostic file is present for testing Chrome, the active bot script (`dvsa_bot.py`) **only supports Safari**.
 
 ---
 
 ## ⚙️ Configuration & Customization
 
-Before launching the bot, you must configure your settings directly in `dvsa_bot.py`.
+All configurations are located at the top of the [dvsa_bot.py](file:///Users/administrator/Code/python/dvsa_bot/dvsa_bot.py) file.
 
-### 1. Safety Switch (`DRY_RUN`)
-Modify the `DRY_RUN` variable on **Line 13**:
+### 1. Bot Mode (`BOT_MODE`)
+Select the bot's mode of operation:
 ```python
-DRY_RUN = True  # Set to False to auto-confirm bookings
+BOT_MODE = "keep_alive"  # Options: "keep_alive" or "auto_book"
 ```
-* **`DRY_RUN = True` (Recommended):** The bot automatically completes all navigation, selects the slot, accepts warnings, and stops on the final page showing the **"Confirm changes"** button. It then plays success alarms and alerts you via WhatsApp so you can review and click the final confirm button manually.
-* **`DRY_RUN = False`:** The bot will automatically inject a final click to confirm and lock in the booking without human intervention.
+* **`keep_alive` (Recommended for use with Testi):** Refreshes the portal at relaxed intervals to maintain your active session. If it detects a logout, timeout, or CAPTCHA, it sounds the `Basso` alarm every 15 seconds and alerts you via WhatsApp. Once you log back in/solve the CAPTCHA, it automatically resumes keep-alive refreshes.
+* **`auto_book`:** Monitors the calendar, searches for slots, and triggers the auto-booking sequence.
 
-### 2. Setting Your Preferred Times (Date/Time Whitelist)
-You must specify the exact dates and times you want to check inside the `ALLOWED_SLOTS` dictionary:
+### 2. Keep-Alive Delays
+Adjust how often Safari refreshes to keep the session alive:
+```python
+KEEP_ALIVE_MIN_DELAY = 180  # Minimum delay (3 minutes)
+KEEP_ALIVE_MAX_DELAY = 300  # Maximum delay (5 minutes)
+```
+*Refreshes are randomized between these two limits to prevent Cloudflare/Incapsula from detecting the bot.*
 
+### 3. Alert Cooldown
+```python
+ALERT_COOLDOWN = 15  # Time in seconds between error alarms
+```
+*When your attention is required (e.g., CAPTCHA/login page detected), the bot plays an alarm and checks the page state again after this delay.*
+
+### 4. Auto-Booking Whitelist (Only for `auto_book` mode)
+Specify the exact dates and time windows you want to book in the `ALLOWED_SLOTS` dictionary:
 ```python
 ALLOWED_SLOTS = {
     "2026-06-08": {"start": "08:00", "end": "18:00"},
     "2026-06-09": {"start": "13:00", "end": "18:00"},
-    # Format: "YYYY-MM-DD": {"start": "HH:MM", "end": "HH:MM"} (24-hour time)
 }
 ```
-
-* **How it works:**
-  1. The bot retrieves the list of bookable dates shown on the calendar page.
-  2. If a date is found in your `ALLOWED_SLOTS` keys, it clicks on that date.
-  3. It retrieves all time slots for that date (e.g., `"9:17am"`, `"2:45pm"`).
-  4. It parses each time and checks if it falls within the `start` and `end` window you defined for that specific day.
-  5. If a time slot matches your whitelist, booking begins immediately. If not, it skips the date and continues monitoring.
-
-### 3. WhatsApp Notifications Setup
-The bot uses the Twilio API to send WhatsApp messages when a matching slot is found.
-
-Modify the Twilio settings under the `--- TWILIO SETUP ---` section:
-* **`TWILIO_ACCOUNT_SID`** & **`TWILIO_AUTH_TOKEN`**: Your Twilio account credentials.
-* **Recipient Number:** Update the `to='whatsapp:+447551973789'` parameter inside `send_whatsapp_alert()` to your personal phone number (ensure it is verified in your Twilio Sandbox if using a trial account).
-* **Twilio Content Template:** It uses template ID `HXb5b62575e6e4ff6129ad7c8efe1f983e` to bypass Twilio's restrictions on sending free-form outbound WhatsApp messages. This template takes two parameters:
-  1. `1`: The date found (formatted as `DD/MM`).
-  2. `2`: The time found (e.g., `10:15am`).
 
 ---
 
@@ -76,35 +73,28 @@ Modify the Twilio settings under the `--- TWILIO SETUP ---` section:
    ```
 
 2. **Open Safari:**
-   Open Safari and log in to the DVSA booking portal. Navigate through the queue/login and go directly to the page displaying the booking calendar. Keep this Safari window open and visible.
+   Open Safari, log into the DVSA booking portal, and navigate to the calendar/booking page. Leave this window active in the background.
 
 3. **Start the Script:**
-   In your terminal, run:
    ```bash
    python dvsa_bot.py
    ```
 
 4. **Initialize:**
-   The script will display:
-   `🍏 AUTO-BOOKER STARTED (DRY_RUN = True) 🍏`
-   `Press ENTER when looking at the DVSA calendar...`
-   
-   Once you are on the calendar page, press **ENTER** in the terminal to start monitoring.
+   Press **ENTER** in the terminal once you are on the correct page to start monitoring.
 
 ---
 
-## 🛡️ Anti-Block & Security Features
+## 🛡️ WAF & Block Recovery Logic
 
-* **Queue-It Handling:** If the DVSA portal redirects Safari to a `queue-it.net` queue page, the script detects it, logs `⏳ Queue detected. Waiting...`, and sleeps for 30 seconds before rechecking.
-* **WAF/Cloudflare Detection:** If the site presents a block page, Cloudflare challenge, session timeout, or additional security checks, the bot:
-  1. Logs `🛑 BLOCK DETECTED. Human intervention required.`
-  2. Plays 5 loud error alarms using macOS `Basso` sound.
-  3. Pauses execution so you don't get banned.
-* **Humanized Refreshing:** Refreshes the Safari page at randomized intervals drawn from a Gaussian distribution (averaging ~55 seconds) rather than a fixed rate to look like natural human activity.
+* **Queue-It Pages:** If Safari is sent to a `queue-it.net` queue page, the bot logs `⏳ Queue page detected...` and waits 30 seconds before rechecking.
+* **Transient Page Error Handling:** If Safari fails to read momentarily (e.g., during a refresh), the bot retries 3 times with a 1.5-second sleep before triggering a false alarm.
+* **Persistent Alarms:** If a true CAPTCHA or logout is detected, the bot sends a WhatsApp notification and plays the macOS `Basso` audio warning. It will continue doing so at the configured `ALERT_COOLDOWN` interval. 
+* **Automatic Recovery:** As soon as you solve the CAPTCHA or log back in manually, the bot will automatically play a success chime (`Glass`), send a WhatsApp confirming recovery, and return to the normal keep-alive loop.
 
 ---
 
 ## 📝 Logging & Diagnostics
 
-* All actions, found slots, warnings, and errors are printed to stdout and saved in `dvsa_bot_log.txt` with timestamps.
-* If you run into audio issues, you can run `python test_alarms.py` to diagnose your macOS audio system.
+* All logs are outputted to stdout and appended to `dvsa_bot_log.txt`.
+* If you run into audio issues, run `python test_alarms.py` to test your macOS audio system.
